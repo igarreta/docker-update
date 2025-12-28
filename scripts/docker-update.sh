@@ -131,6 +131,61 @@ send_pushover() {
     fi
 }
 
+# === ARGUMENT PARSING ===
+TARGET_CONTAINER=""
+TARGET_STACK=""
+VALIDATE_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --container)
+            TARGET_CONTAINER="$2"
+            shift 2
+            ;;
+        --stack)
+            TARGET_STACK="$2"
+            shift 2
+            ;;
+        --validate-only)
+            VALIDATE_ONLY=true
+            shift
+            ;;
+        -h|--help)
+            cat << EOF
+Docker Update Script
+
+USAGE:
+    $0 [OPTIONS]
+
+OPTIONS:
+    --container NAME    Update only the specified container
+    --stack PATH        Update only the specified stack
+    --validate-only     Run validation without performing updates
+    -h, --help          Show this help message
+
+EXAMPLES:
+    # Update all containers
+    $0
+
+    # Update only one container
+    $0 --container portainer
+
+    # Update all containers in a stack
+    $0 --stack /opt/stacks/monitoring
+
+    # Validate inventory without updating
+    $0 --validate-only
+EOF
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 # === INITIALIZATION ===
 mkdir -p "$LOG_DIR"
 mkdir -p "$(dirname "$INVENTORY_FILE")"
@@ -224,6 +279,37 @@ while IFS= read -r line; do
     INVENTORY_FLAGS["$name"]="$flags"
 done < "$INVENTORY_FILE"
 
+# === VALIDATE TARGET CONTAINER/STACK ===
+if [[ -n "$TARGET_CONTAINER" ]]; then
+    found=false
+    for container in "${INVENTORY_CONTAINERS[@]}"; do
+        if [[ "$container" == "$TARGET_CONTAINER" ]]; then
+            found=true
+            break
+        fi
+    done
+    if [[ "$found" == false ]]; then
+        error "Container '$TARGET_CONTAINER' not found in inventory"
+        exit 1
+    fi
+    info "Targeting single container: $TARGET_CONTAINER"
+fi
+
+if [[ -n "$TARGET_STACK" ]]; then
+    found=false
+    for container in "${INVENTORY_CONTAINERS[@]}"; do
+        if [[ "${INVENTORY_STACKS[$container]}" == "$TARGET_STACK" ]]; then
+            found=true
+            break
+        fi
+    done
+    if [[ "$found" == false ]]; then
+        error "Stack '$TARGET_STACK' not found in inventory"
+        exit 1
+    fi
+    info "Targeting single stack: $TARGET_STACK"
+fi
+
 # === VALIDATION ===
 log "========================================"
 log "Docker Update - $(date)"
@@ -280,6 +366,12 @@ log "Validation Summary: $WARNINGS warnings, $ERRORS errors"
 log "========================================"
 log ""
 
+# === EXIT IF VALIDATE-ONLY ===
+if [[ "$VALIDATE_ONLY" == true ]]; then
+    info "Validation complete (--validate-only mode)"
+    exit 0
+fi
+
 # === PROMPT TO CONTINUE ===
 if [[ $WARNINGS -gt 0 ]]; then
     warn "There are discrepancies between inventory and running state."
@@ -298,12 +390,23 @@ log ""
 # Group containers by stack for efficient updates
 declare -A STACKS_TO_UPDATE
 for container in "${INVENTORY_CONTAINERS[@]}"; do
+    # Skip if targeting specific container and this isn't it
+    if [[ -n "$TARGET_CONTAINER" ]] && [[ "$container" != "$TARGET_CONTAINER" ]]; then
+        continue
+    fi
+
     flags="${INVENTORY_FLAGS[$container]}"
+    stack="${INVENTORY_STACKS[$container]}"
+
+    # Skip if targeting specific stack and this container's stack doesn't match
+    if [[ -n "$TARGET_STACK" ]] && [[ "$stack" != "$TARGET_STACK" ]]; then
+        continue
+    fi
+
     is_running=$(echo "$RUNNING_CONTAINERS" | grep -q "^${container}$" && echo "yes" || echo "no")
 
     # Update if container is running OR has update-stopped flag
     if [[ "$is_running" == "yes" ]] || [[ "$flags" == *"update-stopped"* ]]; then
-        stack="${INVENTORY_STACKS[$container]}"
         type="${INVENTORY_TYPES[$container]}"
         # Mark stack for update (avoid duplicates if multiple containers per stack)
         STACKS_TO_UPDATE["$stack"]="$type"
@@ -364,6 +467,16 @@ sleep 5  # Give containers time to stabilize
 
 FAILED_CONTAINERS=()
 for container in "${INVENTORY_CONTAINERS[@]}"; do
+    # Skip if targeting specific container and this isn't it
+    if [[ -n "$TARGET_CONTAINER" ]] && [[ "$container" != "$TARGET_CONTAINER" ]]; then
+        continue
+    fi
+
+    # Skip if targeting specific stack and this container's stack doesn't match
+    if [[ -n "$TARGET_STACK" ]] && [[ "${INVENTORY_STACKS[$container]}" != "$TARGET_STACK" ]]; then
+        continue
+    fi
+
     flags="${INVENTORY_FLAGS[$container]}"
     status=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo "not_found")
 

@@ -195,11 +195,29 @@ The script will:
 ./docker-update.sh --validate-only
 ```
 
+### Update Specific Container
+
+```bash
+# Update only one container (updates its entire stack)
+./docker-update.sh --container portainer
+./docker-update.sh --container immich-server
+```
+
+**Note:** This updates the container's entire stack. If multiple containers share the same stack, they'll all be updated.
+
 ### Update Specific Stack
 
 ```bash
-# Update a single stack
-./docker-update.sh --stack /opt/stacks/portainer
+# Update all containers in a single stack
+./docker-update.sh --stack /opt/stacks/monitoring
+./docker-update.sh --stack /opt/stacks/immich
+```
+
+### Help
+
+```bash
+# Show all available options
+./docker-update.sh --help
 ```
 
 ## Container Types
@@ -340,11 +358,12 @@ docker-update-manager/
 
 ## Roadmap / TODO
 
-- [ ] `--validate-only` flag for dry runs
-- [ ] `--stack <path>` flag for single-stack updates
-- [ ] `ignore-stopped` inventory option for cron containers
+- [x] `--validate-only` flag for dry runs
+- [x] `--stack <path>` flag for single-stack updates
+- [x] `--container <name>` flag for single-container updates
+- [x] `update-stopped` flag for cron-triggered containers
+- [x] Pushover notification support for failures
 - [ ] Health check integration (wait for healthy status)
-- [ ] Notification support (email/webhook on completion)
 - [ ] Backup verification before update
 - [ ] Rollback automation
 - [ ] Update scheduling recommendations based on image release frequency
@@ -374,8 +393,17 @@ MIT License - See LICENSE file
 cd docker-update-manager
 ./scripts/generate-inventory.sh
 
-# Monthly update
+# Update all containers (monthly)
 ./scripts/docker-update.sh
+
+# Update only one container
+./scripts/docker-update.sh --container portainer
+
+# Update all containers in a stack
+./scripts/docker-update.sh --stack /opt/stacks/monitoring
+
+# Validate inventory without updating
+./scripts/docker-update.sh --validate-only
 
 # Check current state
 docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
