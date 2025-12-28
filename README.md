@@ -25,8 +25,8 @@ This complements existing update strategies for Proxmox and the Docker VM itself
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/docker-update-manager.git
-cd docker-update-manager
+git clone https://github.com/igarreta/docker-update.git
+cd docker-update
 
 # Make scripts executable
 chmod +x scripts/*.sh
@@ -293,7 +293,7 @@ db-backup|/opt/stacks/db-backup|Database backups|update-stopped
 Logs are stored in the project's `log/` subdirectory:
 
 ```
-docker-update-manager/
+docker-update/
 └── log/
     ├── update-20250119-1400.log
     ├── update-20250218-1400.log
@@ -337,7 +337,7 @@ docker compose up -d --no-build  # Uses cached image
 ## Project Structure
 
 ```
-docker-update-manager/
+docker-update/
 ├── README.md
 ├── LICENSE
 ├── scripts/
@@ -390,7 +390,7 @@ MIT License - See LICENSE file
 
 ```bash
 # Initial setup - auto-generate inventory
-cd docker-update-manager
+cd docker-update
 ./scripts/generate-inventory.sh
 
 # Update all containers (monthly)
