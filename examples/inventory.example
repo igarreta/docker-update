@@ -1,27 +1,40 @@
-# ~/.docker-inventory
-# Format: container_name|stack_path|type|notes
+# ~/etc/docker-inventory
+# Format: container_name|stack_path|notes
+# (type is auto-detected from Dockerfile/docker-compose.yml)
 #
-# type options:
-#   pull  - Uses pre-built images from registry
+# Alternative formats:
+#   container_name|stack_path|type|notes          # Explicit type
+#   container_name|stack_path|notes|flags         # With flags
+#   container_name|stack_path|type|notes|flags    # All fields
+#
+# Type options:
+#   pull  - Uses pre-built images from registry (default if no Dockerfile)
 #   build - Has Dockerfile that needs building
+#
+# Flag options:
+#   update-stopped - Update even if container is not running (for cron jobs, etc.)
 
-# Core services
-portainer|/opt/stacks/portainer|pull|Management UI
-traefik|/opt/stacks/traefik|pull|Reverse proxy
+# Core services (type auto-detected)
+portainer|/opt/stacks/portainer|Management UI
+traefik|/opt/stacks/traefik|Reverse proxy
 
-# Media
-jellyfin|/opt/stacks/jellyfin|pull|Media server
-immich-server|/opt/stacks/immich|pull|Photo management
-immich-microservices|/opt/stacks/immich|pull|Photo management
-immich-machine-learning|/opt/stacks/immich|pull|Photo management
+# Media (type auto-detected)
+jellyfin|/opt/stacks/jellyfin|Media server
+immich-server|/opt/stacks/immich|Photo management
+immich-microservices|/opt/stacks/immich|Photo management
+immich-machine-learning|/opt/stacks/immich|Photo management
 
-# Custom applications
-my-custom-app|/opt/stacks/custom-app|build|Built from local Dockerfile
-data-processor|/opt/stacks/processor|build|Python ETL scripts
+# Custom applications (type auto-detected from Dockerfile)
+my-custom-app|/opt/stacks/custom-app|Built from local Dockerfile
+data-processor|/opt/stacks/processor|Python ETL scripts
 
-# Monitoring
-prometheus|/opt/stacks/monitoring|pull|Metrics
-grafana|/opt/stacks/monitoring|pull|Dashboards
+# Monitoring (type auto-detected)
+prometheus|/opt/stacks/monitoring|Metrics
+grafana|/opt/stacks/monitoring|Dashboards
 
-# Cron-triggered (will show as not running, that's expected)
-# backup-runner|/opt/stacks/backup|pull|Triggered by cron
+# Example with explicit type (optional)
+# nginx|/opt/stacks/nginx|pull|Explicit type override
+
+# Cron-triggered containers (not expected to be running)
+# Use update-stopped flag to update them without running check
+# backup-runner|/opt/stacks/backup|Triggered by cron|update-stopped
