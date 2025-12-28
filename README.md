@@ -50,16 +50,25 @@ Edit `~/etc/docker-inventory` to document your containers:
 # Format: container_name|stack_path|notes
 # (type is auto-detected from Dockerfile/docker-compose.yml)
 #
-# Alternative format with explicit type:
-# Format: container_name|stack_path|type|notes
-# type options:
+# Alternative formats:
+#   container_name|stack_path|type|notes          # Explicit type
+#   container_name|stack_path|notes|flags         # With flags
+#   container_name|stack_path|type|notes|flags    # All fields
+#
+# Type options:
 #   pull  - Uses pre-built images from registry
 #   build - Has Dockerfile that needs building
+#
+# Flag options:
+#   update-stopped - Update even if container is not running
 
 # Type auto-detected (recommended)
 portainer|/opt/stacks/portainer|Management UI
 traefik|/opt/stacks/traefik|Reverse proxy
 my-custom-app|/opt/stacks/custom-app|Built from local Dockerfile
+
+# Cron-triggered container (not expected to be running)
+backup-runner|/opt/stacks/backup|Nightly backups|update-stopped
 
 # Or with explicit type (optional)
 nginx|/opt/stacks/nginx|pull|Explicit type override
@@ -77,6 +86,34 @@ COMPOSE_BASE="/opt/stacks"                    # Adjust if needed
 ```
 
 **Note:** Logs are now stored in the project's `log/` subdirectory rather than `~/docker-logs`
+
+### Pushover Notifications (Optional)
+
+The script can send push notifications via [Pushover](https://pushover.net/) when containers fail post-update.
+
+**Setup:**
+
+1. Create a Pushover account at https://pushover.net/
+2. Get your User Key from the dashboard
+3. Create an Application/API Token
+
+**Configure credentials:**
+
+```bash
+# Option 1: Set environment variables (recommended)
+export PUSHOVER_USER_KEY="your_user_key_here"
+export PUSHOVER_API_TOKEN="your_api_token_here"
+
+# Option 2: Edit the script directly
+# Uncomment and set in scripts/docker-update.sh:
+# PUSHOVER_USER_KEY="your_user_key_here"
+# PUSHOVER_API_TOKEN="your_api_token_here"
+```
+
+**What you'll get:**
+- High-priority alerts when containers fail to start after an update
+- Notification includes failed container names and log file location
+- Warnings in the log if credentials are not configured
 
 ## Generating Inventory
 
@@ -206,20 +243,23 @@ docker compose up -d --build
 
 ## Cron-Triggered Containers
 
-For containers that run on a schedule (not always running):
+For containers that run on a schedule (not always running), use the `update-stopped` flag:
 
-1. Add a comment in inventory:
-   ```bash
-   # Cron-triggered (expected to be stopped)
-   backup-runner|/opt/stacks/backup|pull|Triggered by cron - OK if stopped
-   ```
+```bash
+# Format: container_name|stack_path|notes|update-stopped
+backup-runner|/opt/stacks/backup|Nightly backups|update-stopped
+db-backup|/opt/stacks/db-backup|Database backups|update-stopped
+```
 
-2. Or use a separate inventory file for scheduled containers
+**What this does:**
+- Skips the "not running" warning during validation
+- Updates the container's stack even when stopped
+- Skips post-update verification (won't fail if container is stopped)
 
-3. Or add `--ignore` flag (TODO: implement):
-   ```bash
-   backup-runner|/opt/stacks/backup|pull|ignore-stopped
-   ```
+**Use cases:**
+- Cron-triggered containers
+- One-off job containers
+- Maintenance containers that run periodically
 
 ## Logging
 

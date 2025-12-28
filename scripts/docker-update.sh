@@ -12,6 +12,11 @@ LOG_DIR="$PROJECT_DIR/log"
 LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M).log"
 COMPOSE_BASE="/path/to/your/compose/files"  # Adjust this
 
+# Pushover credentials (optional - for failure alerts)
+# Set these in your environment or uncomment and set here:
+# PUSHOVER_USER_KEY="your_user_key_here"
+# PUSHOVER_API_TOKEN="your_api_token_here"
+
 # === COLOR OUTPUT ===
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -77,6 +82,35 @@ detect_stack_type() {
     echo "pull"
 }
 
+send_pushover() {
+    local title="$1"
+    local message="$2"
+    local priority="${3:-0}"  # Default priority: normal
+
+    # Check if Pushover credentials are configured
+    if [[ -z "$PUSHOVER_USER_KEY" ]] || [[ -z "$PUSHOVER_API_TOKEN" ]]; then
+        warn "Pushover credentials not configured - skipping notification"
+        warn "Set PUSHOVER_USER_KEY and PUSHOVER_API_TOKEN to enable alerts"
+        return 1
+    fi
+
+    # Send notification
+    local response=$(curl -s --form-string "token=$PUSHOVER_API_TOKEN" \
+        --form-string "user=$PUSHOVER_USER_KEY" \
+        --form-string "title=$title" \
+        --form-string "message=$message" \
+        --form-string "priority=$priority" \
+        https://api.pushover.net/1/messages.json 2>&1)
+
+    if echo "$response" | grep -q '"status":1'; then
+        info "Pushover notification sent successfully"
+        return 0
+    else
+        warn "Failed to send Pushover notification: $response"
+        return 1
+    fi
+}
+
 # === INITIALIZATION ===
 mkdir -p "$LOG_DIR"
 mkdir -p "$(dirname "$INVENTORY_FILE")"
@@ -87,16 +121,25 @@ if [[ ! -f "$INVENTORY_FILE" ]]; then
     cat > "$INVENTORY_FILE" << 'EOF'
 # Docker Container Inventory
 # Format: container_name|stack_path|notes
-# (type field is optional - auto-detected from Dockerfile/docker-compose.yml)
+# (type is auto-detected from Dockerfile/docker-compose.yml)
 #
-# Alternative format with explicit type:
-# Format: container_name|stack_path|type|notes
-# type: pull (pre-built image) or build (Dockerfile)
+# Alternative formats:
+#   container_name|stack_path|type|notes          # Explicit type
+#   container_name|stack_path|notes|flags         # With flags
+#   container_name|stack_path|type|notes|flags    # All fields
 #
-# Example:
+# Type options:
+#   pull  - Uses pre-built images from registry
+#   build - Has Dockerfile that needs building
+#
+# Flag options:
+#   update-stopped - Update even if container is not running (for cron jobs, etc.)
+#
+# Examples:
 # homeassistant|/opt/stacks/homeassistant|Home automation
 # custom-app|/opt/stacks/custom-app|Custom built from Dockerfile
 # nginx-proxy|/opt/stacks/proxy|pull|Reverse proxy (explicit type)
+# backup-runner|/opt/stacks/backup|Nightly backups|update-stopped
 #
 # Add your containers below:
 EOF
@@ -108,6 +151,7 @@ fi
 # === LOAD INVENTORY ===
 declare -A INVENTORY_STACKS
 declare -A INVENTORY_TYPES
+declare -A INVENTORY_FLAGS
 INVENTORY_CONTAINERS=()
 
 while IFS= read -r line; do
@@ -118,15 +162,28 @@ while IFS= read -r line; do
     # Count the number of pipe separators to determine format
     pipe_count=$(echo "$line" | tr -cd '|' | wc -c)
 
+    flags=""
     if [[ $pipe_count -eq 2 ]]; then
         # 3-field format: container_name|stack_path|notes
         IFS='|' read -r name stack notes <<< "$line"
         type=""  # Will be auto-detected
     elif [[ $pipe_count -eq 3 ]]; then
-        # 4-field format: container_name|stack_path|type|notes
-        IFS='|' read -r name stack type notes <<< "$line"
+        # Could be: container_name|stack_path|type|notes OR container_name|stack_path|notes|flags
+        IFS='|' read -r name stack field3 field4 <<< "$line"
+        # Check if field3 looks like a type (pull/build) or contains flags
+        if [[ "$field3" =~ ^(pull|build)$ ]]; then
+            type="$field3"
+            notes="$field4"
+        else
+            type=""
+            notes="$field3"
+            flags="$field4"
+        fi
+    elif [[ $pipe_count -eq 4 ]]; then
+        # 5-field format: container_name|stack_path|type|notes|flags
+        IFS='|' read -r name stack type notes flags <<< "$line"
     else
-        warn "Invalid inventory line (expected 2 or 3 pipes): $line"
+        warn "Invalid inventory line (expected 2-4 pipes): $line"
         continue
     fi
 
@@ -134,6 +191,7 @@ while IFS= read -r line; do
     name=$(echo "$name" | xargs)
     stack=$(echo "$stack" | xargs)
     type=$(echo "$type" | xargs)
+    flags=$(echo "$flags" | xargs)
 
     # Auto-detect type if not specified
     if [[ -z "$type" ]]; then
@@ -143,6 +201,7 @@ while IFS= read -r line; do
     INVENTORY_CONTAINERS+=("$name")
     INVENTORY_STACKS["$name"]="$stack"
     INVENTORY_TYPES["$name"]="$type"
+    INVENTORY_FLAGS["$name"]="$flags"
 done < "$INVENTORY_FILE"
 
 # === VALIDATION ===
@@ -161,11 +220,16 @@ ERRORS=0
 # Check 1: Containers in inventory but NOT running
 log "--- Checking inventory containers ---"
 for container in "${INVENTORY_CONTAINERS[@]}"; do
+    flags="${INVENTORY_FLAGS[$container]}"
     if echo "$RUNNING_CONTAINERS" | grep -q "^${container}$"; then
         success "$container: in inventory and running"
     else
-        warn "$container: in inventory but NOT running"
-        ((WARNINGS++))
+        if [[ "$flags" == *"update-stopped"* ]]; then
+            info "$container: stopped (will update anyway - update-stopped flag)"
+        else
+            warn "$container: in inventory but NOT running"
+            ((WARNINGS++))
+        fi
     fi
 done
 
@@ -214,8 +278,11 @@ log ""
 # Group containers by stack for efficient updates
 declare -A STACKS_TO_UPDATE
 for container in "${INVENTORY_CONTAINERS[@]}"; do
-    # Only update if container is running
-    if echo "$RUNNING_CONTAINERS" | grep -q "^${container}$"; then
+    flags="${INVENTORY_FLAGS[$container]}"
+    is_running=$(echo "$RUNNING_CONTAINERS" | grep -q "^${container}$" && echo "yes" || echo "no")
+
+    # Update if container is running OR has update-stopped flag
+    if [[ "$is_running" == "yes" ]] || [[ "$flags" == *"update-stopped"* ]]; then
         stack="${INVENTORY_STACKS[$container]}"
         type="${INVENTORY_TYPES[$container]}"
         # Mark stack for update (avoid duplicates if multiple containers per stack)
@@ -277,7 +344,15 @@ sleep 5  # Give containers time to stabilize
 
 FAILED_CONTAINERS=()
 for container in "${INVENTORY_CONTAINERS[@]}"; do
+    flags="${INVENTORY_FLAGS[$container]}"
     status=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo "not_found")
+
+    # Skip verification for containers with update-stopped flag (they're not expected to be running)
+    if [[ "$flags" == *"update-stopped"* ]]; then
+        info "$container: skipped verification (update-stopped flag)"
+        continue
+    fi
+
     if [[ "$status" == "running" ]]; then
         success "$container: running"
     else
@@ -286,6 +361,14 @@ for container in "${INVENTORY_CONTAINERS[@]}"; do
         ((ERRORS++))
     fi
 done
+
+# Send Pushover alert if any containers failed
+if [[ ${#FAILED_CONTAINERS[@]} -gt 0 ]]; then
+    alert_title="Docker Update Failed"
+    alert_message="Failed containers (${#FAILED_CONTAINERS[@]}): ${FAILED_CONTAINERS[*]}"
+    alert_message+="\n\nCheck logs: $LOG_FILE"
+    send_pushover "$alert_title" "$alert_message" 1  # Priority 1 (high)
+fi
 
 # === CLEANUP ===
 log ""

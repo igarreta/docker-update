@@ -2,11 +2,17 @@
 # Format: container_name|stack_path|notes
 # (type is auto-detected from Dockerfile/docker-compose.yml)
 #
-# Alternative format with explicit type:
-# Format: container_name|stack_path|type|notes
-# type options:
-#   pull  - Uses pre-built images from registry
+# Alternative formats:
+#   container_name|stack_path|type|notes          # Explicit type
+#   container_name|stack_path|notes|flags         # With flags
+#   container_name|stack_path|type|notes|flags    # All fields
+#
+# Type options:
+#   pull  - Uses pre-built images from registry (default if no Dockerfile)
 #   build - Has Dockerfile that needs building
+#
+# Flag options:
+#   update-stopped - Update even if container is not running (for cron jobs, etc.)
 
 # Core services (type auto-detected)
 portainer|/opt/stacks/portainer|Management UI
@@ -29,5 +35,6 @@ grafana|/opt/stacks/monitoring|Dashboards
 # Example with explicit type (optional)
 # nginx|/opt/stacks/nginx|pull|Explicit type override
 
-# Cron-triggered (will show as not running, that's expected)
-# backup-runner|/opt/stacks/backup|Triggered by cron
+# Cron-triggered containers (not expected to be running)
+# Use update-stopped flag to update them without running check
+# backup-runner|/opt/stacks/backup|Triggered by cron|update-stopped
