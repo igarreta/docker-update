@@ -1,0 +1,27 @@
+# ~/.docker-inventory
+# Format: container_name|stack_path|type|notes
+#
+# type options:
+#   pull  - Uses pre-built images from registry
+#   build - Has Dockerfile that needs building
+
+# Core services
+portainer|/opt/stacks/portainer|pull|Management UI
+traefik|/opt/stacks/traefik|pull|Reverse proxy
+
+# Media
+jellyfin|/opt/stacks/jellyfin|pull|Media server
+immich-server|/opt/stacks/immich|pull|Photo management
+immich-microservices|/opt/stacks/immich|pull|Photo management
+immich-machine-learning|/opt/stacks/immich|pull|Photo management
+
+# Custom applications
+my-custom-app|/opt/stacks/custom-app|build|Built from local Dockerfile
+data-processor|/opt/stacks/processor|build|Python ETL scripts
+
+# Monitoring
+prometheus|/opt/stacks/monitoring|pull|Metrics
+grafana|/opt/stacks/monitoring|pull|Dashboards
+
+# Cron-triggered (will show as not running, that's expected)
+# backup-runner|/opt/stacks/backup|pull|Triggered by cron
