@@ -1,0 +1,21 @@
+# Logs
+*.log
+logs/
+
+# Local inventory (users create their own)
+.docker-inventory
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+test-output/
+*.test.sh
