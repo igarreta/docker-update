@@ -175,7 +175,7 @@ EOF
 
 ```bash
 # Run the update script
-./docker-update.sh
+~/docker-update/scripts/docker-update.sh
 ```
 
 The script will:
@@ -192,15 +192,15 @@ The script will:
 
 ```bash
 # Check inventory without updating
-./docker-update.sh --validate-only
+~/docker-update/scripts/docker-update.sh --validate-only
 ```
 
 ### Update Specific Container
 
 ```bash
 # Update only one container (updates its entire stack)
-./docker-update.sh --container portainer
-./docker-update.sh --container immich-server
+~/docker-update/scripts/docker-update.sh --container portainer
+~/docker-update/scripts/docker-update.sh --container immich-server
 ```
 
 **Note:** This updates the container's entire stack. If multiple containers share the same stack, they'll all be updated.
@@ -209,15 +209,15 @@ The script will:
 
 ```bash
 # Update all containers in a single stack
-./docker-update.sh --stack /opt/stacks/monitoring
-./docker-update.sh --stack /opt/stacks/immich
+~/docker-update/scripts/docker-update.sh --stack /opt/stacks/monitoring
+~/docker-update/scripts/docker-update.sh --stack /opt/stacks/immich
 ```
 
 ### Help
 
 ```bash
 # Show all available options
-./docker-update.sh --help
+~/docker-update/scripts/docker-update.sh --help
 ```
 
 ## Container Types
