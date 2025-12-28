@@ -5,8 +5,10 @@
 set -e
 
 # === CONFIGURATION ===
-INVENTORY_FILE="$HOME/.docker-inventory"
-LOG_DIR="$HOME/docker-logs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+INVENTORY_FILE="$HOME/etc/docker-inventory"
+LOG_DIR="$PROJECT_DIR/log"
 LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M).log"
 COMPOSE_BASE="/path/to/your/compose/files"  # Adjust this
 
@@ -38,21 +40,63 @@ info() {
     log "${BLUE}ℹ $1${NC}"
 }
 
+# === HELPER FUNCTIONS ===
+detect_stack_type() {
+    local stack_path="$1"
+
+    # Check if directory exists
+    if [[ ! -d "$stack_path" ]]; then
+        echo "pull"  # Default to pull if directory doesn't exist
+        return
+    fi
+
+    # Check for Dockerfile
+    if [[ -f "$stack_path/Dockerfile" ]]; then
+        echo "build"
+        return
+    fi
+
+    # Check docker-compose.yml for build: section
+    local compose_file=""
+    if [[ -f "$stack_path/docker-compose.yml" ]]; then
+        compose_file="$stack_path/docker-compose.yml"
+    elif [[ -f "$stack_path/docker-compose.yaml" ]]; then
+        compose_file="$stack_path/docker-compose.yaml"
+    elif [[ -f "$stack_path/compose.yml" ]]; then
+        compose_file="$stack_path/compose.yml"
+    elif [[ -f "$stack_path/compose.yaml" ]]; then
+        compose_file="$stack_path/compose.yaml"
+    fi
+
+    if [[ -n "$compose_file" ]] && grep -q "^\s*build:" "$compose_file"; then
+        echo "build"
+        return
+    fi
+
+    # Default to pull
+    echo "pull"
+}
+
 # === INITIALIZATION ===
 mkdir -p "$LOG_DIR"
+mkdir -p "$(dirname "$INVENTORY_FILE")"
 
 # === INVENTORY FILE FORMAT ===
 # Create if doesn't exist with example format
 if [[ ! -f "$INVENTORY_FILE" ]]; then
     cat > "$INVENTORY_FILE" << 'EOF'
 # Docker Container Inventory
+# Format: container_name|stack_path|notes
+# (type field is optional - auto-detected from Dockerfile/docker-compose.yml)
+#
+# Alternative format with explicit type:
 # Format: container_name|stack_path|type|notes
 # type: pull (pre-built image) or build (Dockerfile)
 #
 # Example:
-# homeassistant|/opt/stacks/homeassistant|pull|Home automation
-# custom-app|/opt/stacks/custom-app|build|Custom built from Dockerfile
-# nginx-proxy|/opt/stacks/proxy|pull|Reverse proxy
+# homeassistant|/opt/stacks/homeassistant|Home automation
+# custom-app|/opt/stacks/custom-app|Custom built from Dockerfile
+# nginx-proxy|/opt/stacks/proxy|pull|Reverse proxy (explicit type)
 #
 # Add your containers below:
 EOF
@@ -66,11 +110,36 @@ declare -A INVENTORY_STACKS
 declare -A INVENTORY_TYPES
 INVENTORY_CONTAINERS=()
 
-while IFS='|' read -r name stack type notes; do
+while IFS= read -r line; do
     # Skip comments and empty lines
-    [[ "$name" =~ ^#.*$ ]] && continue
-    [[ -z "$name" ]] && continue
-    
+    [[ "$line" =~ ^#.*$ ]] && continue
+    [[ -z "$line" ]] && continue
+
+    # Count the number of pipe separators to determine format
+    pipe_count=$(echo "$line" | tr -cd '|' | wc -c)
+
+    if [[ $pipe_count -eq 2 ]]; then
+        # 3-field format: container_name|stack_path|notes
+        IFS='|' read -r name stack notes <<< "$line"
+        type=""  # Will be auto-detected
+    elif [[ $pipe_count -eq 3 ]]; then
+        # 4-field format: container_name|stack_path|type|notes
+        IFS='|' read -r name stack type notes <<< "$line"
+    else
+        warn "Invalid inventory line (expected 2 or 3 pipes): $line"
+        continue
+    fi
+
+    # Trim whitespace
+    name=$(echo "$name" | xargs)
+    stack=$(echo "$stack" | xargs)
+    type=$(echo "$type" | xargs)
+
+    # Auto-detect type if not specified
+    if [[ -z "$type" ]]; then
+        type=$(detect_stack_type "$stack")
+    fi
+
     INVENTORY_CONTAINERS+=("$name")
     INVENTORY_STACKS["$name"]="$stack"
     INVENTORY_TYPES["$name"]="$type"

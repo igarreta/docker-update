@@ -1,9 +1,11 @@
 # Logs
 *.log
 logs/
+log/
 
 # Local inventory (users create their own)
 .docker-inventory
+docker-inventory
 
 # Editor files
 *.swp

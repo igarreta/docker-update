@@ -28,42 +28,51 @@ This complements existing update strategies for Proxmox and the Docker VM itself
 git clone https://github.com/YOUR_USERNAME/docker-update-manager.git
 cd docker-update-manager
 
-# Copy scripts to your preferred location
-cp scripts/docker-update.sh ~/scripts/
-chmod +x ~/scripts/docker-update.sh
+# Make scripts executable
+chmod +x scripts/docker-update.sh
 
 # Create initial inventory (will be created on first run if missing)
-cp examples/inventory.example ~/.docker-inventory
+mkdir -p ~/etc
+cp examples/inventory.example ~/etc/docker-inventory
 ```
 
 ## Configuration
 
 ### Inventory File
 
-Edit `~/.docker-inventory` to document your containers:
+Edit `~/etc/docker-inventory` to document your containers:
 
 ```bash
-# Format: container_name|stack_path|type|notes
+# Format: container_name|stack_path|notes
+# (type is auto-detected from Dockerfile/docker-compose.yml)
 #
+# Alternative format with explicit type:
+# Format: container_name|stack_path|type|notes
 # type options:
 #   pull  - Uses pre-built images from registry
 #   build - Has Dockerfile that needs building
 
-portainer|/opt/stacks/portainer|pull|Management UI
-traefik|/opt/stacks/traefik|pull|Reverse proxy
-my-custom-app|/opt/stacks/custom-app|build|Built from local Dockerfile
+# Type auto-detected (recommended)
+portainer|/opt/stacks/portainer|Management UI
+traefik|/opt/stacks/traefik|Reverse proxy
+my-custom-app|/opt/stacks/custom-app|Built from local Dockerfile
+
+# Or with explicit type (optional)
+nginx|/opt/stacks/nginx|pull|Explicit type override
 ```
 
 ### Script Configuration
 
-Edit the configuration section in `docker-update.sh`:
+The script uses these default locations (auto-configured):
 
 ```bash
 # === CONFIGURATION ===
-INVENTORY_FILE="$HOME/.docker-inventory"
-LOG_DIR="$HOME/docker-logs"
-COMPOSE_BASE="/opt/stacks"  # Base path for your compose files
+INVENTORY_FILE="$HOME/etc/docker-inventory"  # Inventory location
+LOG_DIR="$PROJECT_DIR/log"                    # Logs stored in project
+COMPOSE_BASE="/opt/stacks"                    # Adjust if needed
 ```
+
+**Note:** Logs are now stored in the project's `log/` subdirectory rather than `~/docker-logs`
 
 ## Usage
 
@@ -165,13 +174,14 @@ For containers that run on a schedule (not always running):
 
 ## Logging
 
-Logs are stored in `~/docker-logs/`:
+Logs are stored in the project's `log/` subdirectory:
 
 ```
-docker-logs/
-├── update-20250119-1400.log
-├── update-20250218-1400.log
-└── update-20250319-1400.log
+docker-update-manager/
+└── log/
+    ├── update-20250119-1400.log
+    ├── update-20250218-1400.log
+    └── update-20250319-1400.log
 ```
 
 Each log contains:
@@ -260,13 +270,14 @@ MIT License - See LICENSE file
 
 ```bash
 # Monthly update
-./docker-update.sh
+cd docker-update-manager
+./scripts/docker-update.sh
 
 # Check current state
 docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 
 # View recent logs
-tail -100 ~/docker-logs/update-*.log | less
+tail -100 log/update-*.log | less
 
 # Manual stack update
 cd /opt/stacks/mystack
