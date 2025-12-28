@@ -100,19 +100,28 @@ The script can send push notifications via [Pushover](https://pushover.net/) whe
 **Configure credentials:**
 
 ```bash
-# Option 1: Set environment variables (recommended)
+# Option 1: Use credentials file (recommended)
+# Create /home/rsi/etc/pushover.env with:
+PUSHOVER_TOKEN="your_api_token_here"
+PUSHOVER_USER="your_user_key_here"
+DEFAULT_DEVICE="your_device_name"  # Optional - target specific device
+
+# Option 2: Set environment variables
 export PUSHOVER_USER_KEY="your_user_key_here"
 export PUSHOVER_API_TOKEN="your_api_token_here"
+export PUSHOVER_DEVICE="your_device_name"  # Optional
 
-# Option 2: Edit the script directly
+# Option 3: Edit the script directly
 # Uncomment and set in scripts/docker-update.sh:
 # PUSHOVER_USER_KEY="your_user_key_here"
 # PUSHOVER_API_TOKEN="your_api_token_here"
+# PUSHOVER_DEVICE="your_device_name"  # Optional
 ```
 
 **What you'll get:**
 - High-priority alerts when containers fail to start after an update
 - Notification includes failed container names and log file location
+- Optional device targeting (send to specific device only)
 - Warnings in the log if credentials are not configured
 
 ## Generating Inventory

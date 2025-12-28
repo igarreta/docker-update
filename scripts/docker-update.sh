@@ -13,9 +13,20 @@ LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M).log"
 COMPOSE_BASE="/path/to/your/compose/files"  # Adjust this
 
 # Pushover credentials (optional - for failure alerts)
-# Set these in your environment or uncomment and set here:
+# Option 1: Source from credentials file (recommended)
+PUSHOVER_ENV_FILE="/home/rsi/etc/pushover.env"
+if [[ -f "$PUSHOVER_ENV_FILE" ]]; then
+    source "$PUSHOVER_ENV_FILE"
+    # Map variables from env file to script variables
+    PUSHOVER_USER_KEY="${PUSHOVER_USER}"
+    PUSHOVER_API_TOKEN="${PUSHOVER_TOKEN}"
+    PUSHOVER_DEVICE="${DEFAULT_DEVICE}"
+fi
+
+# Option 2: Set in environment or uncomment and set here:
 # PUSHOVER_USER_KEY="your_user_key_here"
 # PUSHOVER_API_TOKEN="your_api_token_here"
+# PUSHOVER_DEVICE="your_device_name"  # Optional
 
 # === COLOR OUTPUT ===
 RED='\033[0;31m'
@@ -90,17 +101,26 @@ send_pushover() {
     # Check if Pushover credentials are configured
     if [[ -z "$PUSHOVER_USER_KEY" ]] || [[ -z "$PUSHOVER_API_TOKEN" ]]; then
         warn "Pushover credentials not configured - skipping notification"
-        warn "Set PUSHOVER_USER_KEY and PUSHOVER_API_TOKEN to enable alerts"
+        warn "Configure credentials in $PUSHOVER_ENV_FILE or set environment variables"
         return 1
     fi
 
+    # Build curl command with optional device parameter
+    local curl_cmd="curl -s --form-string \"token=$PUSHOVER_API_TOKEN\" \
+        --form-string \"user=$PUSHOVER_USER_KEY\" \
+        --form-string \"title=$title\" \
+        --form-string \"message=$message\" \
+        --form-string \"priority=$priority\""
+
+    # Add device if specified
+    if [[ -n "$PUSHOVER_DEVICE" ]]; then
+        curl_cmd+=" --form-string \"device=$PUSHOVER_DEVICE\""
+    fi
+
+    curl_cmd+=" https://api.pushover.net/1/messages.json 2>&1"
+
     # Send notification
-    local response=$(curl -s --form-string "token=$PUSHOVER_API_TOKEN" \
-        --form-string "user=$PUSHOVER_USER_KEY" \
-        --form-string "title=$title" \
-        --form-string "message=$message" \
-        --form-string "priority=$priority" \
-        https://api.pushover.net/1/messages.json 2>&1)
+    local response=$(eval "$curl_cmd")
 
     if echo "$response" | grep -q '"status":1'; then
         info "Pushover notification sent successfully"
