@@ -29,11 +29,15 @@ git clone https://github.com/YOUR_USERNAME/docker-update-manager.git
 cd docker-update-manager
 
 # Make scripts executable
-chmod +x scripts/docker-update.sh
+chmod +x scripts/*.sh
 
-# Create initial inventory (will be created on first run if missing)
+# Option 1: Auto-generate inventory from running containers (recommended)
+./scripts/generate-inventory.sh
+
+# Option 2: Manual setup from example
 mkdir -p ~/etc
 cp examples/inventory.example ~/etc/docker-inventory
+# Then edit ~/etc/docker-inventory to add your containers
 ```
 
 ## Configuration
@@ -73,6 +77,51 @@ COMPOSE_BASE="/opt/stacks"                    # Adjust if needed
 ```
 
 **Note:** Logs are now stored in the project's `log/` subdirectory rather than `~/docker-logs`
+
+## Generating Inventory
+
+### Auto-Generate from Running Containers
+
+The easiest way to create your inventory is to auto-generate it from currently running containers:
+
+```bash
+# Generate inventory from running containers
+./scripts/generate-inventory.sh
+
+# Preview what would be generated (dry run)
+./scripts/generate-inventory.sh --dry-run
+
+# Generate with automatic backup
+./scripts/generate-inventory.sh --backup
+
+# Force overwrite without prompting
+./scripts/generate-inventory.sh --force
+```
+
+**How it works:**
+- Scans all running Docker containers
+- Extracts stack paths from Docker Compose labels (`com.docker.compose.project.working_dir`)
+- Groups containers by stack
+- Generates inventory in the 3-field format (type auto-detected)
+- Warns about containers without detectable paths (non-Compose containers)
+
+**Limitations:**
+- Only detects **running** containers (stopped containers must be added manually)
+- Containers not started with Docker Compose will show `UNKNOWN` path
+- You'll need to manually edit the file to fix unknown paths and add stopped containers
+
+### Manual Inventory Creation
+
+Alternatively, create the inventory manually:
+
+```bash
+mkdir -p ~/etc
+cat > ~/etc/docker-inventory << 'EOF'
+# Format: container_name|stack_path|notes
+portainer|/opt/stacks/portainer|Management UI
+traefik|/opt/stacks/traefik|Reverse proxy
+EOF
+```
 
 ## Usage
 
@@ -225,16 +274,19 @@ docker-update-manager/
 ├── README.md
 ├── LICENSE
 ├── scripts/
-│   ├── docker-update.sh      # Main update script
-│   └── validate-inventory.sh # Validation only
+│   ├── docker-update.sh         # Main update script
+│   ├── generate-inventory.sh    # Auto-generate inventory
+│   └── validate-inventory.sh    # Validation only
 ├── examples/
-│   ├── inventory.example     # Sample inventory file
-│   └── docker-compose/       # Example compose configurations
+│   ├── inventory.example        # Sample inventory file
+│   └── docker-compose/          # Example compose configurations
 │       ├── pull-based/
 │       └── build-based/
-└── docs/
-    ├── CHANGELOG.md
-    └── troubleshooting.md
+├── docs/
+│   ├── CHANGELOG.md
+│   └── troubleshooting.md
+└── log/                         # Update logs (created on first run)
+    └── update-*.log
 ```
 
 ## Roadmap / TODO
@@ -269,8 +321,11 @@ MIT License - See LICENSE file
 ## Quick Reference
 
 ```bash
-# Monthly update
+# Initial setup - auto-generate inventory
 cd docker-update-manager
+./scripts/generate-inventory.sh
+
+# Monthly update
 ./scripts/docker-update.sh
 
 # Check current state
@@ -278,6 +333,9 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 
 # View recent logs
 tail -100 log/update-*.log | less
+
+# Regenerate inventory after adding new containers
+./scripts/generate-inventory.sh --backup
 
 # Manual stack update
 cd /opt/stacks/mystack
