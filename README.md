@@ -1,23 +1,25 @@
-# Docker Update Manager
+# Docker & Podman Update Manager
 
-A manual, inventory-based update strategy for Docker containers running on a Proxmox VM.
+A manual, inventory-based update strategy for Docker and Podman containers running on a Proxmox VM or unprivileged LXC.
 
 ## Overview
 
-This project provides a controlled, monthly update process for Docker containers with:
+This project provides a controlled, monthly update process for containers with:
 
 - **Inventory validation** - Ensures consistency between documented and running containers
-- **Dockerfile support** - Handles both pre-built images and custom Dockerfile builds
+- **Dockerfile/Containerfile support** - Handles both pre-built images and custom builds
 - **Staged updates** - Updates containers by stack with verification between each
 - **Warning system** - Alerts on discrepancies (running but undocumented, or documented but stopped)
 - **Logging** - Complete audit trail of all update operations
+- **Podman support** - Sister scripts for unprivileged LXC environments running Podman
 
 ## Context
 
 Designed for a home server environment running:
 - **Host**: Proxmox VE on GMTec NucBox G5 (Intel N97, 12GB RAM)
 - **VM**: docker03 - Docker host with multiple containers
-- **Containers**: 14 running + 1 cron-triggered
+- **LXC**: Unprivileged containers running Podman (via `sudo podman`)
+- **Containers**: 14 running + 1 cron-triggered (Docker); additional Podman containers in LXC
 
 This complements existing update strategies for Proxmox and the Docker VM itself.
 
@@ -30,7 +32,11 @@ cd docker-update
 
 # Make scripts executable
 chmod +x scripts/*.sh
+```
 
+### Docker setup
+
+```bash
 # Option 1: Auto-generate inventory from running containers (recommended)
 ./scripts/generate-inventory.sh
 
@@ -38,6 +44,17 @@ chmod +x scripts/*.sh
 mkdir -p ~/etc
 cp examples/inventory.example ~/etc/docker-inventory
 # Then edit ~/etc/docker-inventory to add your containers
+```
+
+### Podman setup (unprivileged LXC)
+
+```bash
+# Auto-generate inventory from running Podman containers
+./scripts/generate-podman-inventory.sh
+
+# Or create manually
+mkdir -p ~/etc
+# Edit ~/etc/podman-inventory to add your containers
 ```
 
 ## Configuration
@@ -126,9 +143,7 @@ export PUSHOVER_DEVICE="your_device_name"  # Optional
 
 ## Generating Inventory
 
-### Auto-Generate from Running Containers
-
-The easiest way to create your inventory is to auto-generate it from currently running containers:
+### Docker — Auto-Generate from Running Containers
 
 ```bash
 # Generate inventory from running containers
@@ -151,56 +166,98 @@ The easiest way to create your inventory is to auto-generate it from currently r
 - Generates inventory in the 3-field format (type auto-detected)
 - Warns about containers without detectable paths (non-Compose containers)
 
-**Limitations:**
+**Output:** `~/etc/docker-inventory`
+
+### Podman — Auto-Generate from Running Containers
+
+```bash
+# Generate inventory from running Podman containers (requires sudo)
+./scripts/generate-podman-inventory.sh
+
+# Preview what would be generated (dry run)
+./scripts/generate-podman-inventory.sh --dry-run
+
+# Generate with automatic backup
+./scripts/generate-podman-inventory.sh --backup
+
+# Force overwrite without prompting
+./scripts/generate-podman-inventory.sh --force
+```
+
+**How it works:**
+- Uses `sudo podman` to scan running containers
+- Extracts stack paths from Podman Compose labels (`com.docker.compose.project.working_dir`)
+- Groups containers by stack
+- Generates inventory in the 3-field format (type auto-detected from `Containerfile`/`Dockerfile`)
+- Warns about containers without detectable paths (not managed by Podman Compose)
+
+**Output:** `~/etc/podman-inventory`
+
+**Limitations (both generators):**
 - Only detects **running** containers (stopped containers must be added manually)
-- Containers not started with Docker Compose will show `UNKNOWN` path
+- Containers not started with Compose will show `UNKNOWN` path
 - You'll need to manually edit the file to fix unknown paths and add stopped containers
 
 ### Manual Inventory Creation
 
-Alternatively, create the inventory manually:
-
 ```bash
 mkdir -p ~/etc
+
+# Docker
 cat > ~/etc/docker-inventory << 'EOF'
 # Format: container_name|stack_path|notes
 portainer|/opt/stacks/portainer|Management UI
 traefik|/opt/stacks/traefik|Reverse proxy
 EOF
+
+# Podman
+cat > ~/etc/podman-inventory << 'EOF'
+# Format: container_name|stack_path|notes
+homeassistant|/opt/stacks/homeassistant|Home automation
+EOF
 ```
 
 ## Usage
 
-### Monthly Update Process
+### Docker — Monthly Update Process
 
 ```bash
-# Run the update script
 ~/docker-update/scripts/docker-update.sh
 ```
 
-The script will:
+### Podman — Monthly Update Process
+
+```bash
+~/docker-update/scripts/podman-update.sh
+```
+
+Both scripts will:
 
 1. **Validate inventory** against running containers
 2. **Report warnings** for any discrepancies
-3. **Prompt to continue** if warnings exist
-4. **Update each stack** based on type (pull or build)
-5. **Verify** all containers are running post-update
-6. **Clean up** unused images
-7. **Log** all operations
+3. **Update each stack** based on type (pull or build)
+4. **Verify** all containers are running post-update
+5. **Clean up** unused images
+6. **Log** all operations
 
-### Validation Only (Dry Run)
+### Validation Only
 
 ```bash
-# Check inventory without updating
+# Docker
 ~/docker-update/scripts/docker-update.sh --validate-only
+
+# Podman
+~/docker-update/scripts/podman-update.sh --validate-only
 ```
 
 ### Update Specific Container
 
 ```bash
-# Update only one container (updates its entire stack)
+# Docker
 ~/docker-update/scripts/docker-update.sh --container portainer
-~/docker-update/scripts/docker-update.sh --container immich-server
+
+# Podman
+~/docker-update/scripts/podman-update.sh --container homeassistant
 ```
 
 **Note:** This updates the container's entire stack. If multiple containers share the same stack, they'll all be updated.
@@ -208,16 +265,18 @@ The script will:
 ### Update Specific Stack
 
 ```bash
-# Update all containers in a single stack
+# Docker
 ~/docker-update/scripts/docker-update.sh --stack /opt/stacks/monitoring
-~/docker-update/scripts/docker-update.sh --stack /opt/stacks/immich
+
+# Podman
+~/docker-update/scripts/podman-update.sh --stack /opt/stacks/homeassistant
 ```
 
 ### Help
 
 ```bash
-# Show all available options
 ~/docker-update/scripts/docker-update.sh --help
+~/docker-update/scripts/podman-update.sh --help
 ```
 
 ## Container Types
@@ -227,36 +286,29 @@ The script will:
 For containers using images from Docker Hub, GHCR, etc:
 
 ```yaml
-# docker-compose.yml
+# compose.yaml
 services:
   app:
-    image: nginx:latest  # or nginx:1.25
+    image: nginx:latest
 ```
 
-Update process:
-```bash
-docker compose pull
-docker compose up -d
-```
+### Dockerfile/Containerfile Builds (`type: build`)
 
-### Dockerfile Builds (`type: build`)
-
-For containers built from local Dockerfiles:
+For containers built from local files. Both `Dockerfile` (Docker/Podman) and `Containerfile` (Podman) are detected automatically:
 
 ```yaml
-# docker-compose.yml
+# compose.yaml
 services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Containerfile  # or Dockerfile
 ```
 
-Update process:
-```bash
-docker compose build --pull  # Pulls fresh base images
-docker compose up -d --build
-```
+Type auto-detection checks (in order):
+1. `Dockerfile` or `Containerfile` present in the stack directory → `build`
+2. `build:` section in the compose file → `build`
+3. Otherwise → `pull`
 
 ## Validation Logic
 
@@ -341,9 +393,11 @@ docker-update/
 ├── README.md
 ├── LICENSE
 ├── scripts/
-│   ├── docker-update.sh         # Main update script
-│   ├── generate-inventory.sh    # Auto-generate inventory
-│   └── validate-inventory.sh    # Validation only
+│   ├── docker-update.sh              # Main Docker update script
+│   ├── generate-inventory.sh         # Auto-generate Docker inventory
+│   ├── validate-inventory.sh         # Docker validation only (wrapper)
+│   ├── podman-update.sh              # Podman update script (unprivileged LXC)
+│   └── generate-podman-inventory.sh  # Auto-generate Podman inventory
 ├── examples/
 │   ├── inventory.example        # Sample inventory file
 │   └── docker-compose/          # Example compose configurations
@@ -363,6 +417,7 @@ docker-update/
 - [x] `--container <name>` flag for single-container updates
 - [x] `update-stopped` flag for cron-triggered containers
 - [x] Pushover notification support for failures
+- [x] Podman support (`podman-update.sh`, `generate-podman-inventory.sh`)
 - [ ] Health check integration (wait for healthy status)
 - [ ] Backup verification before update
 - [ ] Rollback automation
@@ -388,6 +443,8 @@ MIT License - See LICENSE file
 
 ## Quick Reference
 
+### Docker
+
 ```bash
 # Initial setup - auto-generate inventory
 cd docker-update
@@ -405,23 +462,48 @@ cd docker-update
 # Validate inventory without updating
 ./scripts/docker-update.sh --validate-only
 
-# Check current state
-docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-
-# View recent logs
-tail -100 log/update-*.log | less
-
 # Regenerate inventory after adding new containers
 ./scripts/generate-inventory.sh --backup
 
-# Manual stack update
-cd /opt/stacks/mystack
-docker compose pull && docker compose up -d
+# Check current state
+docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+```
 
-# Manual build update
-cd /opt/stacks/mystack
-docker compose build --pull && docker compose up -d --build
+### Podman
 
-# Cleanup old images
+```bash
+# Initial setup - auto-generate inventory (requires sudo)
+cd docker-update
+./scripts/generate-podman-inventory.sh
+
+# Update all containers (monthly)
+./scripts/podman-update.sh
+
+# Update only one container
+./scripts/podman-update.sh --container homeassistant
+
+# Update all containers in a stack
+./scripts/podman-update.sh --stack /opt/stacks/homeassistant
+
+# Validate inventory without updating
+./scripts/podman-update.sh --validate-only
+
+# Regenerate inventory after adding new containers
+./scripts/generate-podman-inventory.sh --backup
+
+# Check current state
+sudo podman ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+```
+
+### Logs and Cleanup
+
+```bash
+# View recent logs
+tail -100 log/update-*.log | less
+
+# Cleanup old Docker images
 docker image prune -a --filter "until=720h" -f
+
+# Cleanup old Podman images
+sudo podman image prune -f
 ```

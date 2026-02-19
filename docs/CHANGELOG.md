@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- `podman-update.sh` - Sister script for Podman containers in unprivileged LXC environments (uses `sudo podman`)
+- `generate-podman-inventory.sh` - Auto-generates `~/etc/podman-inventory` by scanning running Podman containers
+
 ### Planned
 - Notification support (email/webhook on completion)
 - Backup verification before update
