@@ -336,7 +336,7 @@ for container in "${INVENTORY_CONTAINERS[@]}"; do
         else
             warn "$container: in inventory but NOT running"
             INVENTORY_WARNINGS+=("$container: in inventory but NOT running")
-            ((WARNINGS++))
+            ((++WARNINGS))
         fi
     fi
 done
@@ -358,7 +358,7 @@ while IFS= read -r running; do
     
     if [[ $found -eq 0 ]]; then
         warn "$running: running but NOT in inventory"
-        ((WARNINGS++))
+        ((++WARNINGS))
     fi
 done <<< "$RUNNING_CONTAINERS"
 
@@ -420,7 +420,7 @@ for stack in "${!STACKS_TO_UPDATE[@]}"; do
     
     if [[ ! -d "$stack" ]]; then
         error "Stack directory not found: $stack"
-        ((ERRORS++))
+        ((++ERRORS))
         continue
     fi
     
@@ -435,7 +435,7 @@ for stack in "${!STACKS_TO_UPDATE[@]}"; do
             success "Stack updated successfully"
         else
             error "Build failed for $stack"
-            ((ERRORS++))
+            ((++ERRORS))
         fi
     else
         # Pre-built image stack
@@ -446,7 +446,7 @@ for stack in "${!STACKS_TO_UPDATE[@]}"; do
             success "Stack updated successfully"
         else
             error "Pull failed for $stack"
-            ((ERRORS++))
+            ((++ERRORS))
         fi
     fi
     
@@ -488,7 +488,7 @@ for container in "${INVENTORY_CONTAINERS[@]}"; do
     else
         error "$container: status=$status"
         FAILED_CONTAINERS+=("$container")
-        ((ERRORS++))
+        ((++ERRORS))
     fi
 done
 
