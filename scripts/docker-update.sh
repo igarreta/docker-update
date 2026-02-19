@@ -322,6 +322,7 @@ log ""
 RUNNING_CONTAINERS=$(docker ps --format '{{.Names}}' | sort)
 WARNINGS=0
 ERRORS=0
+INVENTORY_WARNINGS=()
 
 # Check 1: Containers in inventory but NOT running
 log "--- Checking inventory containers ---"
@@ -334,6 +335,7 @@ for container in "${INVENTORY_CONTAINERS[@]}"; do
             info "$container: stopped (will update anyway - update-stopped flag)"
         else
             warn "$container: in inventory but NOT running"
+            INVENTORY_WARNINGS+=("$container: in inventory but NOT running")
             ((WARNINGS++))
         fi
     fi
@@ -372,14 +374,9 @@ if [[ "$VALIDATE_ONLY" == true ]]; then
     exit 0
 fi
 
-# === PROMPT TO CONTINUE ===
+# === CONTINUE DESPITE WARNINGS ===
 if [[ $WARNINGS -gt 0 ]]; then
-    warn "There are discrepancies between inventory and running state."
-    read -p "Continue with update anyway? (y/N): " -r
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log "Update cancelled by user."
-        exit 0
-    fi
+    warn "There are discrepancies between inventory and running state. Continuing anyway..."
 fi
 
 # === UPDATE PROCESS ===
@@ -515,6 +512,14 @@ log "UPDATE COMPLETE - $(date)"
 log "========================================"
 log "Warnings: $WARNINGS"
 log "Errors: $ERRORS"
+
+if [[ ${#INVENTORY_WARNINGS[@]} -gt 0 ]]; then
+    log ""
+    warn "Inventory warnings (containers not running at update time):"
+    for w in "${INVENTORY_WARNINGS[@]}"; do
+        warn "  $w"
+    done
+fi
 
 if [[ ${#FAILED_CONTAINERS[@]} -gt 0 ]]; then
     error "Failed containers: ${FAILED_CONTAINERS[*]}"
