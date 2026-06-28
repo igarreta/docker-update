@@ -13,7 +13,8 @@ sudo -v
 # === CONFIGURATION ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-INVENTORY_FILE="$HOME/etc/podman-inventory"
+if [[ -n "${SUDO_USER:-}" ]]; then USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6); else USER_HOME="$HOME"; fi
+INVENTORY_FILE="${USER_HOME:-$HOME}/etc/podman-inventory"
 LOG_DIR="$PROJECT_DIR/log"
 LOG_FILE="$LOG_DIR/podman-update-$(date +%Y%m%d-%H%M).log"
 
